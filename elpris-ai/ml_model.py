@@ -6,26 +6,30 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from prophet import Prophet
+from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.preprocessing import StandardScaler
 
 logger = logging.getLogger(__name__)
 
-MODEL_DIR = Path("/config/elpris_ai/models")
+MODEL_DIR = Path("/config/elpris_ai")
 MODEL_DIR.mkdir(parents=True, exist_ok=True)
+
 
 class PricePredictor:
     def __init__(self):
-        self.model: Optional[Prophet] = None
+        self.model: Optional[GradientBoostingRegressor] = None
         self.scaler = StandardScaler()
         self.model_path = MODEL_DIR / "price_model.pkl"
+        self.scaler_path = MODEL_DIR / "scaler.pkl"
         self._load_model()
 
     def _load_model(self):
-        if self.model_path.exists():
+        if self.model_path.exists() and self.scaler_path.exists():
             try:
                 with open(self.model_path, "rb") as f:
                     self.model = pickle.load(f)
+                with open(self.scaler_path, "rb") as f:
+                    self.scaler = pickle.load(f)
                 logger.info("Loaded existing model")
             except Exception as e:
                 logger.warning(f"Could not load model: {e}")
@@ -35,13 +39,14 @@ class PricePredictor:
         try:
             with open(self.model_path, "wb") as f:
                 pickle.dump(self.model, f)
+            with open(self.scaler_path, "wb") as f:
+                pickle.dump(self.scaler, f)
             logger.info("Model saved")
         except Exception as e:
             logger.error(f"Error saving model: {e}")
 
     def _prepare_features(self, data: Dict[str, Any]) -> pd.DataFrame:
         records = []
-
         historical_prices = data.get("historical_prices", [])
         weather_history = data.get("weather_history", [])
         commodity_prices = data.get("commodity_prices", [])
@@ -65,7 +70,7 @@ class PricePredictor:
         if not price_df.empty:
             for ts, row in price_df.iterrows():
                 record = {
-                    "ds": ts,
+                    "timestamp": ts,
                     "y": row.get("price", 0),
                     "hour": ts.hour,
                     "dayofweek": ts.dayofweek,
@@ -76,7 +81,7 @@ class PricePredictor:
                     "cloud_cover": 0,
                     "co2_emission": 0,
                     "consumption": 0,
-                    "production": 0
+                    "production": 0,
                 }
 
                 if not weather_df.empty:
@@ -97,8 +102,7 @@ class PricePredictor:
 
                 records.append(record)
 
-        df = pd.DataFrame(records)
-        return df
+        return pd.DataFrame(records)
 
     def _add_lag_features(self, df: pd.DataFrame) -> pd.DataFrame:
         if "y" in df.columns:
@@ -108,6 +112,14 @@ class PricePredictor:
             df["y_rolling_24"] = df["y"].rolling(window=24, min_periods=1).mean()
             df["y_rolling_168"] = df["y"].rolling(window=168, min_periods=1).mean()
         return df
+
+    FEATURE_COLS = [
+        "hour", "dayofweek", "month", "is_weekend",
+        "temperature", "wind_speed", "cloud_cover",
+        "co2_emission", "consumption", "production",
+        "y_lag_1", "y_lag_24", "y_lag_168",
+        "y_rolling_24", "y_rolling_168",
+    ]
 
     async def train(self, data: Dict[str, Any]):
         try:
@@ -120,27 +132,19 @@ class PricePredictor:
             df = self._add_lag_features(df)
             df = df.dropna()
 
-            extra_regressors = [
-                "hour", "dayofweek", "month", "is_weekend",
-                "temperature", "wind_speed", "cloud_cover",
-                "co2_emission", "consumption", "production",
-                "y_lag_1", "y_lag_24", "y_lag_168",
-                "y_rolling_24", "y_rolling_168"
-            ]
+            X = df[self.FEATURE_COLS].fillna(0)
+            y = df["y"]
 
-            self.model = Prophet(
-                daily_seasonality=True,
-                weekly_seasonality=True,
-                yearly_seasonality=True,
-                changepoint_prior_scale=0.05,
-                seasonality_prior_scale=10
+            self.scaler = StandardScaler()
+            X_scaled = self.scaler.fit_transform(X)
+
+            self.model = GradientBoostingRegressor(
+                n_estimators=200,
+                max_depth=5,
+                learning_rate=0.1,
+                random_state=42,
             )
-
-            for reg in extra_regressors:
-                if reg in df.columns:
-                    self.model.add_regressor(reg)
-
-            self.model.fit(df[["ds", "y"] + extra_regressors])
+            self.model.fit(X_scaled, y)
             self._save_model()
 
             logger.info(f"Model trained on {len(df)} samples")
@@ -154,140 +158,110 @@ class PricePredictor:
         data: Dict[str, Any],
         days: int = 7,
         vat_percent: float = 25,
-        fixed_cost_kwh: float = 0.1293
+        fixed_cost_kwh: float = 0.1293,
     ) -> List[Dict]:
         if self.model is None:
             logger.warning("No model available, using simple prediction")
             return await self._simple_predict(data, days, vat_percent, fixed_cost_kwh)
 
         try:
-            future = pd.DataFrame()
             now = datetime.utcnow()
             hours_needed = days * 24
 
-            future["ds"] = [now + timedelta(hours=i) for i in range(hours_needed)]
-            future["hour"] = future["ds"].dt.hour
-            future["dayofweek"] = future["ds"].dt.dayofweek
-            future["month"] = future["ds"].dt.month
-            future["is_weekend"] = (future["ds"].dt.dayofweek >= 5).astype(int)
+            future_times = [now + timedelta(hours=i) for i in range(hours_needed)]
 
-            weather_forecast = data.get("weather_forecast", [])
-            if weather_forecast:
-                weather_df = pd.DataFrame(weather_forecast)
-                weather_df["timestamp"] = pd.to_datetime(weather_df["timestamp"])
-
-                for i, row in future.iterrows():
-                    ts = row["ds"]
-                    closest = weather_df.index[weather_df.index.get_indexer([ts], method="nearest")]
-                    if len(closest) > 0:
-                        weather_row = weather_df.loc[closest[0]]
-                        future.at[i, "temperature"] = weather_row.get("temperature", 0) or 0
-                        future.at[i, "wind_speed"] = weather_row.get("wind_speed", 0) or 0
-                        future.at[i, "cloud_cover"] = weather_row.get("cloud_cover", 0) or 0
-                    else:
-                        future.at[i, "temperature"] = 0
-                        future.at[i, "wind_speed"] = 0
-                        future.at[i, "cloud_cover"] = 0
-            else:
-                future["temperature"] = 0
-                future["wind_speed"] = 0
-                future["cloud_cover"] = 0
+            future = pd.DataFrame({
+                "ds": future_times,
+                "hour": [t.hour for t in future_times],
+                "dayofweek": [t.dayofweek for t in future_times],
+                "month": [t.month for t in future_times],
+                "is_weekend": [1 if t.dayofweek >= 5 else 0 for t in future_times],
+            })
 
             historical_prices = data.get("historical_prices", [])
+            hist_df = pd.DataFrame()
             if historical_prices:
                 hist_df = pd.DataFrame(historical_prices)
                 hist_df["timestamp"] = pd.to_datetime(hist_df["timestamp"])
                 hist_df = hist_df.set_index("timestamp")
 
-                for i, row in future.iterrows():
-                    ts = row["ds"]
-                    lag_1_ts = ts - timedelta(hours=1)
-                    lag_24_ts = ts - timedelta(hours=24)
-                    lag_168_ts = ts - timedelta(hours=168)
-
-                    for lag_ts, lag_col in [
-                        (lag_1_ts, "y_lag_1"),
-                        (lag_24_ts, "y_lag_24"),
-                        (lag_168_ts, "y_lag_168")
-                    ]:
-                        if lag_ts in hist_df.index:
-                            future.at[i, lag_col] = hist_df.loc[lag_ts, "price"]
-                        else:
-                            future.at[i, lag_col] = 0
-
-                    window_start = ts - timedelta(hours=24)
-                    window_df = hist_df[(hist_df.index >= window_start) & (hist_df.index < ts)]
-                    future.at[i, "y_rolling_24"] = window_df["price"].mean() if len(window_df) > 0 else 0
-
-                    week_start = ts - timedelta(hours=168)
-                    week_df = hist_df[(hist_df.index >= week_start) & (hist_df.index < ts)]
-                    future.at[i, "y_rolling_168"] = week_df["price"].mean() if len(week_df) > 0 else 0
-            else:
-                for col in ["y_lag_1", "y_lag_24", "y_lag_168", "y_rolling_24", "y_rolling_168"]:
-                    future[col] = 0
+            weather_forecast = data.get("weather_forecast", [])
+            weather_df = pd.DataFrame()
+            if weather_forecast:
+                weather_df = pd.DataFrame(weather_forecast)
+                weather_df["timestamp"] = pd.to_datetime(weather_df["timestamp"])
+                weather_df = weather_df.set_index("timestamp")
 
             commodity_prices = data.get("commodity_prices", [])
+            commodity_df = pd.DataFrame()
             if commodity_prices:
                 commodity_df = pd.DataFrame(commodity_prices)
                 commodity_df["timestamp"] = pd.to_datetime(commodity_df["timestamp"])
                 commodity_df = commodity_df.set_index("timestamp")
 
+            for col in ["temperature", "wind_speed", "cloud_cover"]:
+                future[col] = 0.0
+                if not weather_df.empty:
+                    for i, row in future.iterrows():
+                        ts = row["ds"]
+                        closest = weather_df.index[weather_df.index.get_indexer([ts], method="nearest")]
+                        if len(closest) > 0:
+                            future.at[i, col] = weather_df.loc[closest[0], col] or 0
+
+            for col in ["co2_emission", "consumption", "production"]:
+                future[col] = 0.0
+                if not commodity_df.empty:
+                    for i, row in future.iterrows():
+                        ts = row["ds"]
+                        closest = commodity_df.index[commodity_df.index.get_indexer([ts], method="nearest")]
+                        if len(closest) > 0:
+                            future.at[i, col] = commodity_df.loc[closest[0], col] or 0
+
+            for col in ["y_lag_1", "y_lag_24", "y_lag_168", "y_rolling_24", "y_rolling_168"]:
+                future[col] = 0.0
+
+            if not hist_df.empty:
                 for i, row in future.iterrows():
                     ts = row["ds"]
-                    closest = commodity_df.index[commodity_df.index.get_indexer([ts], method="nearest")]
-                    if len(closest) > 0:
-                        commodity_row = commodity_df.loc[closest[0]]
-                        future.at[i, "co2_emission"] = commodity_row.get("co2_price", 0) or 0
-                        future.at[i, "consumption"] = commodity_row.get("consumption", 0) or 0
-                        future.at[i, "production"] = commodity_row.get("production", 0) or 0
-                    else:
-                        future.at[i, "co2_emission"] = 0
-                        future.at[i, "consumption"] = 0
-                        future.at[i, "production"] = 0
-            else:
-                future["co2_emission"] = 0
-                future["consumption"] = 0
-                future["production"] = 0
+                    for lag_hours, lag_col in [(1, "y_lag_1"), (24, "y_lag_24"), (168, "y_lag_168")]:
+                        lag_ts = ts - timedelta(hours=lag_hours)
+                        if lag_ts in hist_df.index:
+                            future.at[i, lag_col] = hist_df.loc[lag_ts, "price"]
+                        else:
+                            nearest = hist_df.index[hist_df.index.get_indexer([lag_ts], method="nearest")]
+                            if len(nearest) > 0:
+                                future.at[i, lag_col] = hist_df.loc[nearest[0], "price"]
 
-            extra_regressors = [
-                "hour", "dayofweek", "month", "is_weekend",
-                "temperature", "wind_speed", "cloud_cover",
-                "co2_emission", "consumption", "production",
-                "y_lag_1", "y_lag_24", "y_lag_168",
-                "y_rolling_24", "y_rolling_168"
-            ]
+                    window_start = ts - timedelta(hours=24)
+                    w = hist_df[(hist_df.index >= window_start) & (hist_df.index < ts)]
+                    future.at[i, "y_rolling_24"] = w["price"].mean() if len(w) > 0 else 0
 
-            for reg in extra_regressors:
-                if reg not in future.columns:
-                    future[reg] = 0
+                    week_start = ts - timedelta(hours=168)
+                    w = hist_df[(hist_df.index >= week_start) & (hist_df.index < ts)]
+                    future.at[i, "y_rolling_168"] = w["price"].mean() if len(w) > 0 else 0
 
-            forecast = self.model.predict(future[["ds"] + extra_regressors])
+            X_future = future[self.FEATURE_COLS].fillna(0)
+            X_scaled = self.scaler.transform(X_future)
+            predictions = self.model.predict(X_scaled)
 
             results = []
-            for _, row in forecast.iterrows():
-                price = max(0, row["yhat"])
+            for i, (ts, price_raw) in enumerate(zip(future_times, predictions)):
+                price = max(0, float(price_raw))
                 vat = price * (vat_percent / 100)
                 price_with_cost = price + vat + fixed_cost_kwh
 
-                confidence = max(0.5, min(1.0, 1 - (row.get("yhat_upper", price) - row.get("yhat_lower", price)) / (price + 0.001)))
-
-                factors = {
-                    "temperature": float(row.get("temperature", 0)),
-                    "wind_speed": float(row.get("wind_speed", 0)),
-                    "cloud_cover": float(row.get("cloud_cover", 0)),
-                    "co2_emission": float(row.get("co2_emission", 0)),
-                    "hour": int(row.get("hour", 0)),
-                    "is_weekend": bool(row.get("is_weekend", 0))
-                }
-
                 results.append({
-                    "timestamp": row["ds"].strftime("%Y-%m-%dT%H:%M:%S"),
+                    "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%S"),
                     "price": round(price, 4),
                     "price_with_cost": round(price_with_cost, 4),
                     "vat": round(vat, 4),
                     "fixed_cost": round(fixed_cost_kwh, 4),
-                    "confidence": round(confidence, 2),
-                    "factors": factors
+                    "confidence": 0.7,
+                    "factors": {
+                        "method": "gradient_boosting",
+                        "hour": ts.hour,
+                        "dayofweek": ts.dayofweek,
+                    },
                 })
 
             return results
@@ -301,7 +275,7 @@ class PricePredictor:
         data: Dict[str, Any],
         days: int,
         vat_percent: float,
-        fixed_cost_kwh: float
+        fixed_cost_kwh: float,
     ) -> List[Dict]:
         historical_prices = data.get("historical_prices", [])
 
@@ -339,8 +313,8 @@ class PricePredictor:
                 "factors": {
                     "method": "simple_average",
                     "hour": hour,
-                    "dayofweek": dayofweek
-                }
+                    "dayofweek": dayofweek,
+                },
             })
 
         return results
