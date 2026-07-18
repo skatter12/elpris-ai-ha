@@ -7,7 +7,11 @@
   "homeassistant": "2024.1.0",
   "arch": ["aarch64", "amd64", "armhf", "armv7"],
   "init": false,
-  "map": ["config:rw"],
+  "map": [
+    { "type": "homeassistant_config", "read_only": false }
+  ],
+  "hassio_api": true,
+  "homeassistant_api": true,
   "options": {
     "region": "DK1",
     "vat_percent": 25,

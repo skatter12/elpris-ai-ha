@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM ghcr.io/home-assistant/base-python:3.12
 
 WORKDIR /app
 
@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 8001
 
-CMD ["python", "main.py"]
+CMD ["python3", "main.py"]
