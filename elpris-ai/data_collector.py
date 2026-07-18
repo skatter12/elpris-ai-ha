@@ -91,6 +91,28 @@ class DataCollector:
             if batch_end < days:
                 await asyncio.sleep(1)
 
+        for future_offset in [0, -1]:
+            dt = now + timedelta(days=future_offset)
+            url = f"{self.elprisenligenu_url}/{dt.year}/{dt.month:02d}-{dt.day:02d}_{region}.json"
+            async with httpx.AsyncClient() as client:
+                try:
+                    response = await client.get(url, timeout=15.0)
+                    if response.status_code == 404:
+                        logger.info(f"Prices for {dt.date()} not yet available")
+                        continue
+                    response.raise_for_status()
+                    data = response.json()
+                    for entry in data:
+                        all_prices.append({
+                            "timestamp": entry.get("time_start"),
+                            "price": entry.get("DKK_per_kWh", 0),
+                            "area": region,
+                        })
+                    logger.info(f"Fetched prices for {dt.date()} (today/tomorrow)")
+                except Exception as e:
+                    logger.warning(f"Error fetching future prices for {dt.date()}: {e}")
+            await asyncio.sleep(0.3)
+
         logger.info(f"Fetched {len(all_prices)} price records from elprisenligenu.dk")
         return all_prices
 

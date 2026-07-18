@@ -251,9 +251,26 @@ class PricePredictor:
             X_scaled = self.scaler.transform(X_future)
             predictions = self.model.predict(X_scaled)
 
+            actual_prices = {}
+            for p in historical_prices:
+                try:
+                    ts = pd.Timestamp(p["timestamp"]).tz_localize(None)
+                    actual_prices[ts] = p["price"]
+                except Exception:
+                    pass
+
             results = []
             for i, (ts, price_raw) in enumerate(zip(future_times, predictions)):
-                price = max(0, float(price_raw))
+                ts_normalized = pd.Timestamp(ts).tz_localize(None)
+                if ts_normalized in actual_prices:
+                    price = max(0, actual_prices[ts_normalized])
+                    method = "actual"
+                    conf = 1.0
+                else:
+                    price = max(0, float(price_raw))
+                    method = "gradient_boosting"
+                    conf = 0.7
+
                 vat = price * (vat_percent / 100)
                 price_with_cost = price + vat + fixed_cost_kwh
 
@@ -263,9 +280,9 @@ class PricePredictor:
                     "price_with_cost": round(price_with_cost, 4),
                     "vat": round(vat, 4),
                     "fixed_cost": round(fixed_cost_kwh, 4),
-                    "confidence": 0.7,
+                    "confidence": conf,
                     "factors": {
-                        "method": "gradient_boosting",
+                        "method": method,
                         "hour": ts.hour,
                         "dayofweek": ts.weekday(),
                     },
