@@ -211,8 +211,15 @@ class DataCollector:
             logger.info(
                 f"Fetching {len(missing_weather_dates)} missing weather dates..."
             )
-            for dt in missing_weather_dates:
-                end_dt = min(dt + timedelta(days=89), datetime.now(timezone.utc))
+            batch_size = 90
+            i = 0
+            while i < len(missing_weather_dates):
+                batch_start = missing_weather_dates[i]
+                batch_end_dt = min(
+                    batch_start + timedelta(days=batch_size - 1),
+                    missing_weather_dates[-1],
+                    datetime.now(timezone.utc),
+                )
                 async with httpx.AsyncClient() as client:
                     try:
                         response = await client.get(
@@ -220,8 +227,8 @@ class DataCollector:
                             params={
                                 "latitude": LATITUDE,
                                 "longitude": LONGITUDE,
-                                "start_date": dt.date().isoformat(),
-                                "end_date": end_dt.date().isoformat(),
+                                "start_date": batch_start.date().isoformat(),
+                                "end_date": batch_end_dt.date().isoformat(),
                                 "hourly": "temperature_2m,wind_speed_10m,cloud_cover",
                                 "timezone": "Europe/Copenhagen",
                             },
@@ -235,34 +242,42 @@ class DataCollector:
                         winds = hourly.get("wind_speed_10m", [])
                         clouds = hourly.get("cloud_cover", [])
 
-                        for i, ts in enumerate(timestamps):
+                        for j, ts in enumerate(timestamps):
                             new_weather.append(
                                 {
                                     "timestamp": ts,
-                                    "temperature": temps[i] if i < len(temps) else 0,
-                                    "wind_speed": winds[i] if i < len(winds) else 0,
-                                    "cloud_cover": clouds[i] if i < len(clouds) else 0,
+                                    "temperature": temps[j] if j < len(temps) else 0,
+                                    "wind_speed": winds[j] if j < len(winds) else 0,
+                                    "cloud_cover": clouds[j] if j < len(clouds) else 0,
                                 }
                             )
                         logger.info(
-                            f"Fetched weather for {dt.date()} to {end_dt.date()}"
+                            f"Fetched weather for {batch_start.date()} to {batch_end_dt.date()}: {len(timestamps)} records"
                         )
                     except Exception as e:
                         logger.warning(
-                            f"Error fetching weather for {dt.date()}: {e}"
+                            f"Error fetching weather for {batch_start.date()} to {batch_end_dt.date()}: {e}"
                         )
+                i += batch_size
                 await asyncio.sleep(0.5)
 
         new_co2 = []
         if missing_co2_dates:
             logger.info(f"Fetching {len(missing_co2_dates)} missing CO2 dates...")
-            for dt in missing_co2_dates:
-                end_dt = min(dt + timedelta(days=29), datetime.now(timezone.utc))
+            batch_size = 30
+            i = 0
+            while i < len(missing_co2_dates):
+                batch_start = missing_co2_dates[i]
+                batch_end_dt = min(
+                    batch_start + timedelta(days=batch_size - 1),
+                    missing_co2_dates[-1],
+                    datetime.now(timezone.utc),
+                )
                 params = {
-                    "start": dt.strftime("%Y-%m-%dT%H:%M"),
-                    "end": end_dt.strftime("%Y-%m-%dT%H:%M"),
+                    "start": batch_start.strftime("%Y-%m-%dT%H:%M"),
+                    "end": batch_end_dt.strftime("%Y-%m-%dT%H:%M"),
                     "sort": "Minutes5UTC DESC",
-                    "limit": 30 * 288,
+                    "limit": batch_size * 288,
                 }
                 async with httpx.AsyncClient() as client:
                     try:
@@ -272,8 +287,10 @@ class DataCollector:
                             timeout=30.0,
                         )
                         if response.status_code == 429:
-                            logger.warning("CO2 API rate limited, skipping...")
+                            logger.warning("CO2 API rate limited, waiting 30s...")
+                            await asyncio.sleep(30)
                             continue
+
                         response.raise_for_status()
                         data = response.json()
                         for record in data.get("records", []):
@@ -286,12 +303,13 @@ class DataCollector:
                                 }
                             )
                         logger.info(
-                            f"Fetched CO2 for {dt.date()} to {end_dt.date()}"
+                            f"Fetched CO2 for {batch_start.date()} to {batch_end_dt.date()}"
                         )
                     except Exception as e:
                         logger.warning(
-                            f"Error fetching CO2 for {dt.date()}: {e}"
+                            f"Error fetching CO2 for {batch_start.date()} to {batch_end_dt.date()}: {e}"
                         )
+                i += batch_size
                 await asyncio.sleep(3)
 
         fetch_tomorrow = _should_fetch_tomorrow()
