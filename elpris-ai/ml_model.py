@@ -55,18 +55,9 @@ class PricePredictor:
         weather_df = pd.DataFrame(weather_history) if weather_history else pd.DataFrame()
         commodity_df = pd.DataFrame(commodity_prices) if commodity_prices else pd.DataFrame()
 
-        if not price_df.empty:
-            price_df["timestamp"] = pd.to_datetime(price_df["timestamp"])
-            price_df = price_df.set_index("timestamp")
-
-        if not weather_df.empty:
-            weather_df["timestamp"] = pd.to_datetime(weather_df["timestamp"])
-            weather_df = weather_df.set_index("timestamp")
-
-        if not commodity_df.empty:
-            commodity_df["timestamp"] = pd.to_datetime(commodity_df["timestamp"])
-            commodity_df = commodity_df.drop_duplicates(subset=["timestamp"], keep="first")
-            commodity_df = commodity_df.set_index("timestamp")
+        price_df = self._normalize_df(price_df)
+        weather_df = self._normalize_df(weather_df)
+        commodity_df = self._normalize_df(commodity_df)
 
         if not price_df.empty:
             for ts, row in price_df.iterrows():
@@ -112,6 +103,15 @@ class PricePredictor:
             df["y_lag_168"] = df["y"].shift(168)
             df["y_rolling_24"] = df["y"].rolling(window=24, min_periods=1).mean()
             df["y_rolling_168"] = df["y"].rolling(window=168, min_periods=1).mean()
+        return df
+
+    @staticmethod
+    def _normalize_df(df: pd.DataFrame, ts_col: str = "timestamp") -> pd.DataFrame:
+        if df.empty or ts_col not in df.columns:
+            return df
+        df[ts_col] = pd.to_datetime(df[ts_col], utc=True).dt.tz_localize(None)
+        df = df.drop_duplicates(subset=[ts_col], keep="first")
+        df = df.set_index(ts_col)
         return df
 
     FEATURE_COLS = [
@@ -180,26 +180,13 @@ class PricePredictor:
             })
 
             historical_prices = data.get("historical_prices", [])
-            hist_df = pd.DataFrame()
-            if historical_prices:
-                hist_df = pd.DataFrame(historical_prices)
-                hist_df["timestamp"] = pd.to_datetime(hist_df["timestamp"])
-                hist_df = hist_df.set_index("timestamp")
+            hist_df = self._normalize_df(pd.DataFrame(historical_prices) if historical_prices else pd.DataFrame())
 
             weather_forecast = data.get("weather_forecast", [])
-            weather_df = pd.DataFrame()
-            if weather_forecast:
-                weather_df = pd.DataFrame(weather_forecast)
-                weather_df["timestamp"] = pd.to_datetime(weather_df["timestamp"])
-                weather_df = weather_df.set_index("timestamp")
+            weather_df = self._normalize_df(pd.DataFrame(weather_forecast) if weather_forecast else pd.DataFrame())
 
             commodity_prices = data.get("commodity_prices", [])
-            commodity_df = pd.DataFrame()
-            if commodity_prices:
-                commodity_df = pd.DataFrame(commodity_prices)
-                commodity_df["timestamp"] = pd.to_datetime(commodity_df["timestamp"])
-                commodity_df = commodity_df.drop_duplicates(subset=["timestamp"], keep="first")
-                commodity_df = commodity_df.set_index("timestamp")
+            commodity_df = self._normalize_df(pd.DataFrame(commodity_prices) if commodity_prices else pd.DataFrame())
 
             for col in ["temperature", "wind_speed", "cloud_cover"]:
                 future[col] = 0.0
