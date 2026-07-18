@@ -65,6 +65,7 @@ class PricePredictor:
 
         if not commodity_df.empty:
             commodity_df["timestamp"] = pd.to_datetime(commodity_df["timestamp"])
+            commodity_df = commodity_df.drop_duplicates(subset=["timestamp"], keep="first")
             commodity_df = commodity_df.set_index("timestamp")
 
         if not price_df.empty:
@@ -197,6 +198,7 @@ class PricePredictor:
             if commodity_prices:
                 commodity_df = pd.DataFrame(commodity_prices)
                 commodity_df["timestamp"] = pd.to_datetime(commodity_df["timestamp"])
+                commodity_df = commodity_df.drop_duplicates(subset=["timestamp"], keep="first")
                 commodity_df = commodity_df.set_index("timestamp")
 
             for col in ["temperature", "wind_speed", "cloud_cover"]:
