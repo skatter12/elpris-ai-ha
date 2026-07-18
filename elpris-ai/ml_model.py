@@ -77,20 +77,26 @@ class PricePredictor:
                 }
 
                 if not weather_df.empty:
-                    closest_weather = weather_df.index[weather_df.index.get_indexer([ts], method="nearest")]
-                    if len(closest_weather) > 0:
-                        weather_row = weather_df.loc[closest_weather[0]]
-                        record["temperature"] = weather_row.get("temperature", 0) or 0
-                        record["wind_speed"] = weather_row.get("wind_speed", 0) or 0
-                        record["cloud_cover"] = weather_row.get("cloud_cover", 0) or 0
+                    try:
+                        closest_weather = weather_df.index[weather_df.index.get_indexer([ts], method="nearest")]
+                        if len(closest_weather) > 0:
+                            weather_row = weather_df.loc[closest_weather[0]]
+                            record["temperature"] = weather_row.get("temperature", 0) or 0
+                            record["wind_speed"] = weather_row.get("wind_speed", 0) or 0
+                            record["cloud_cover"] = weather_row.get("cloud_cover", 0) or 0
+                    except Exception:
+                        pass
 
                 if not commodity_df.empty:
-                    closest_commodity = commodity_df.index[commodity_df.index.get_indexer([ts], method="nearest")]
-                    if len(closest_commodity) > 0:
-                        commodity_row = commodity_df.loc[closest_commodity[0]]
-                        record["co2_emission"] = commodity_row.get("co2_price", 0) or 0
-                        record["consumption"] = commodity_row.get("consumption", 0) or 0
-                        record["production"] = commodity_row.get("production", 0) or 0
+                    try:
+                        closest_commodity = commodity_df.index[commodity_df.index.get_indexer([ts], method="nearest")]
+                        if len(closest_commodity) > 0:
+                            commodity_row = commodity_df.loc[closest_commodity[0]]
+                            record["co2_emission"] = commodity_row.get("co2_price", 0) or 0
+                            record["consumption"] = commodity_row.get("consumption", 0) or 0
+                            record["production"] = commodity_row.get("production", 0) or 0
+                    except Exception:
+                        pass
 
                 records.append(record)
 
@@ -193,41 +199,53 @@ class PricePredictor:
                 if not weather_df.empty:
                     for i, row in future.iterrows():
                         ts = row["ds"]
-                        closest = weather_df.index[weather_df.index.get_indexer([ts], method="nearest")]
-                        if len(closest) > 0:
-                            future.at[i, col] = weather_df.loc[closest[0], col] or 0
+                        try:
+                            closest = weather_df.index[weather_df.index.get_indexer([ts], method="nearest")]
+                            if len(closest) > 0:
+                                future.at[i, col] = weather_df.loc[closest[0], col] or 0
+                        except Exception:
+                            pass
 
             for col in ["co2_emission", "consumption", "production"]:
                 future[col] = 0.0
-                if not commodity_df.empty:
-                    for i, row in future.iterrows():
-                        ts = row["ds"]
+            if not commodity_df.empty:
+                for i, row in future.iterrows():
+                    ts = row["ds"]
+                    try:
                         closest = commodity_df.index[commodity_df.index.get_indexer([ts], method="nearest")]
                         if len(closest) > 0:
-                            future.at[i, col] = commodity_df.loc[closest[0], col] or 0
+                            c_row = commodity_df.loc[closest[0]]
+                            future.at[i, "co2_emission"] = c_row.get("co2_price", 0) or 0
+                            future.at[i, "consumption"] = c_row.get("consumption", 0) or 0
+                            future.at[i, "production"] = c_row.get("production", 0) or 0
+                    except Exception:
+                        pass
 
             for col in ["y_lag_1", "y_lag_24", "y_lag_168", "y_rolling_24", "y_rolling_168"]:
                 future[col] = 0.0
 
             if not hist_df.empty:
                 for i, row in future.iterrows():
-                    ts = row["ds"]
-                    for lag_hours, lag_col in [(1, "y_lag_1"), (24, "y_lag_24"), (168, "y_lag_168")]:
-                        lag_ts = ts - timedelta(hours=lag_hours)
-                        if lag_ts in hist_df.index:
-                            future.at[i, lag_col] = hist_df.loc[lag_ts, "price"]
-                        else:
-                            nearest = hist_df.index[hist_df.index.get_indexer([lag_ts], method="nearest")]
-                            if len(nearest) > 0:
-                                future.at[i, lag_col] = hist_df.loc[nearest[0], "price"]
+                    try:
+                        ts = row["ds"]
+                        for lag_hours, lag_col in [(1, "y_lag_1"), (24, "y_lag_24"), (168, "y_lag_168")]:
+                            lag_ts = ts - timedelta(hours=lag_hours)
+                            if lag_ts in hist_df.index:
+                                future.at[i, lag_col] = hist_df.loc[lag_ts, "price"]
+                            else:
+                                nearest = hist_df.index[hist_df.index.get_indexer([lag_ts], method="nearest")]
+                                if len(nearest) > 0:
+                                    future.at[i, lag_col] = hist_df.loc[nearest[0], "price"]
 
-                    window_start = ts - timedelta(hours=24)
-                    w = hist_df[(hist_df.index >= window_start) & (hist_df.index < ts)]
-                    future.at[i, "y_rolling_24"] = w["price"].mean() if len(w) > 0 else 0
+                        window_start = ts - timedelta(hours=24)
+                        w = hist_df[(hist_df.index >= window_start) & (hist_df.index < ts)]
+                        future.at[i, "y_rolling_24"] = w["price"].mean() if len(w) > 0 else 0
 
-                    week_start = ts - timedelta(hours=168)
-                    w = hist_df[(hist_df.index >= week_start) & (hist_df.index < ts)]
-                    future.at[i, "y_rolling_168"] = w["price"].mean() if len(w) > 0 else 0
+                        week_start = ts - timedelta(hours=168)
+                        w = hist_df[(hist_df.index >= week_start) & (hist_df.index < ts)]
+                        future.at[i, "y_rolling_168"] = w["price"].mean() if len(w) > 0 else 0
+                    except Exception:
+                        pass
 
             X_future = future[self.FEATURE_COLS].fillna(0)
             X_scaled = self.scaler.transform(X_future)
