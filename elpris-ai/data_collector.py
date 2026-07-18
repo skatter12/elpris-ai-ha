@@ -14,37 +14,31 @@ class DataCollector:
         self.yr_url = "https://api.met.no/weatherapi/locationforecast/2.0/compact"
 
     async def collect_all(self, region: str, forecast_days: int) -> Dict[str, Any]:
-        tasks = [
-            self._fetch_historical_prices(region, days=30),
-            self._fetch_weather_forecast(forecast_days),
-            self._fetch_co2_emissions(region, days=30),
-            self._fetch_production(region, days=30),
-        ]
+        prices = await self._fetch_historical_prices(region, days=7)
+        await asyncio.sleep(2)
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        weather = await self._fetch_weather_forecast(forecast_days)
+        await asyncio.sleep(1)
 
-        data = {
-            "historical_prices": results[0] if not isinstance(results[0], Exception) else [],
-            "weather_forecast": results[1] if not isinstance(results[1], Exception) else [],
-            "weather_history": [],
-            "commodity_prices": [],
-        }
+        co2 = await self._fetch_co2_emissions(region, days=7)
+        await asyncio.sleep(1)
 
-        co2 = results[2] if not isinstance(results[2], Exception) else []
-        production = results[3] if not isinstance(results[3], Exception) else []
+        production = await self._fetch_production(region, days=7)
 
-        data["commodity_prices"] = self._merge_commodity(co2, production)
-
-        for i, result in enumerate(results):
-            if isinstance(result, Exception):
-                logger.error(f"Error in task {i}: {result}")
+        commodity = self._merge_commodity(co2, production)
 
         logger.info(
-            f"Data collected: {len(data['historical_prices'])} prices, "
-            f"{len(data['weather_forecast'])} weather forecasts, "
-            f"{len(data['commodity_prices'])} commodity records"
+            f"Data collected: {len(prices)} prices, "
+            f"{len(weather)} weather forecasts, "
+            f"{len(commodity)} commodity records"
         )
-        return data
+
+        return {
+            "historical_prices": prices,
+            "weather_forecast": weather,
+            "weather_history": [],
+            "commodity_prices": commodity,
+        }
 
     async def _fetch_historical_prices(self, region: str, days: int) -> List[Dict]:
         end = datetime.utcnow()
@@ -58,33 +52,51 @@ class DataCollector:
             "limit": days * 24,
         }
 
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(
-                    f"{self.eds_url}/Elspotprices",
-                    params=params,
-                    timeout=30.0,
-                )
-                response.raise_for_status()
-                data = response.json()
-
-                prices = []
-                for record in data.get("records", []):
-                    spot = record.get("SpotPriceDKK")
-                    if spot is None:
+        for attempt in range(3):
+            async with httpx.AsyncClient() as client:
+                try:
+                    response = await client.get(
+                        f"{self.eds_url}/Elspotprices",
+                        params=params,
+                        timeout=30.0,
+                    )
+                    if response.status_code == 429:
+                        wait = (attempt + 1) * 5
+                        logger.warning(f"Rate limited, waiting {wait}s...")
+                        await asyncio.sleep(wait)
                         continue
-                    prices.append({
-                        "timestamp": record.get("HourUTC"),
-                        "price": float(spot) / 1000.0,
-                        "area": record.get("PriceArea", region),
-                    })
 
-                logger.info(f"Fetched {len(prices)} historical prices")
-                return prices
+                    response.raise_for_status()
+                    data = response.json()
 
-            except Exception as e:
-                logger.error(f"Error fetching historical prices: {e}")
-                return []
+                    prices = []
+                    for record in data.get("records", []):
+                        spot = record.get("SpotPriceDKK")
+                        if spot is None:
+                            continue
+                        prices.append({
+                            "timestamp": record.get("HourUTC"),
+                            "price": float(spot) / 1000.0,
+                            "area": record.get("PriceArea", region),
+                        })
+
+                    logger.info(f"Fetched {len(prices)} historical prices")
+                    return prices
+
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429:
+                        wait = (attempt + 1) * 5
+                        logger.warning(f"Rate limited, waiting {wait}s...")
+                        await asyncio.sleep(wait)
+                    else:
+                        logger.error(f"Error fetching prices: {e}")
+                        return []
+                except Exception as e:
+                    logger.error(f"Error fetching prices: {e}")
+                    return []
+
+        logger.error("Failed to fetch prices after 3 attempts")
+        return []
 
     async def _fetch_weather_forecast(self, days: int) -> List[Dict]:
         lat, lon = "56.162", "10.203"
@@ -101,9 +113,7 @@ class DataCollector:
                 data = response.json()
 
                 forecasts = []
-                timeseries = (
-                    data.get("properties", {}).get("timeseries", [])
-                )
+                timeseries = data.get("properties", {}).get("timeseries", [])
 
                 for entry in timeseries[: days * 4]:
                     instant = entry.get("data", {}).get("instant", {}).get("details", {})
@@ -147,8 +157,6 @@ class DataCollector:
                 records = []
                 for record in data.get("records", []):
                     co2 = record.get("CO2PerKWh")
-                    if co2 is None:
-                        co2 = record.get("PriceArea") and record.get("CO2PerKWh")
                     records.append({
                         "timestamp": record.get("Minutes5UTC"),
                         "co2_price": float(co2) if co2 else 0,
@@ -173,25 +181,29 @@ class DataCollector:
             "limit": days * 288,
         }
 
-        dataset = "ProductionPrognosisDK1" if region == "DK1" else "ProductionPrognosisDK2"
-
         async with httpx.AsyncClient() as client:
             try:
                 response = await client.get(
-                    f"{self.eds_url}/{dataset}",
+                    f"{self.eds_url}/ProductionConsolidatedDK",
                     params=params,
                     timeout=30.0,
                 )
+                if response.status_code == 404:
+                    logger.warning("ProductionConsolidatedDK not available, skipping")
+                    return []
+
                 response.raise_for_status()
                 data = response.json()
 
                 records = []
                 for record in data.get("records", []):
-                    records.append({
-                        "timestamp": record.get("Minutes5UTC"),
-                        "production": record.get("ProductionStartIntervalKW", 0) or 0,
-                        "consumption": record.get("ConsumptionEndIntervalKW", 0) or 0,
-                    })
+                    ts = record.get("Minutes5UTC")
+                    if ts:
+                        records.append({
+                            "timestamp": ts,
+                            "production": record.get("ProductionMW", 0) or 0,
+                            "consumption": record.get("ConsumptionMW", 0) or 0,
+                        })
 
                 logger.info(f"Fetched {len(records)} production records")
                 return records
