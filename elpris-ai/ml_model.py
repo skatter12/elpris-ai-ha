@@ -174,9 +174,9 @@ class PricePredictor:
             future = pd.DataFrame({
                 "ds": future_times,
                 "hour": [t.hour for t in future_times],
-                "dayofweek": [t.dayofweek for t in future_times],
+                "dayofweek": [t.weekday() for t in future_times],
                 "month": [t.month for t in future_times],
-                "is_weekend": [1 if t.dayofweek >= 5 else 0 for t in future_times],
+                "is_weekend": [1 if t.weekday() >= 5 else 0 for t in future_times],
             })
 
             historical_prices = data.get("historical_prices", [])
@@ -249,7 +249,7 @@ class PricePredictor:
                     "factors": {
                         "method": "gradient_boosting",
                         "hour": ts.hour,
-                        "dayofweek": ts.dayofweek,
+                        "dayofweek": ts.weekday(),
                     },
                 })
 
@@ -284,7 +284,7 @@ class PricePredictor:
         for i in range(days * 24):
             future_time = now + timedelta(hours=i)
             hour = future_time.hour
-            dayofweek = future_time.dayofweek
+            dayofweek = future_time.weekday()
 
             price = hourly_avg.get((hour, dayofweek), df["price"].mean())
             price = max(0, price)
