@@ -1,0 +1,27 @@
+{
+  "name": "Elpris AI",
+  "description": "AI-powered electricity price calculator for Denmark - predicts prices 7 days ahead",
+  "url": "https://github.com/your-repo/elpris-ai",
+  "arch": ["aarch64", "amd64", "armhf", "armv7"],
+  "init": false,
+  "map": ["config:rw"],
+  "options": {
+    "region": "DK1",
+    "vat_percent": 25,
+    "fixed_cost_kwh": 0.1293,
+    "update_interval_minutes": 60,
+    "forecast_days": 7,
+    "model_retrain_days": 7
+  },
+  "schema": {
+    "region": "list(DK1|DK2)",
+    "vat_percent": "float(0,100)",
+    "fixed_cost_kwh": "float(0,10)",
+    "update_interval_minutes": "int(15,360)",
+    "forecast_days": "int(1,14)",
+    "model_retrain_days": "int(1,30)"
+  },
+  "ports": {
+    "8001/tcp": 8001
+  }
+}

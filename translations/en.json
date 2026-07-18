@@ -1,0 +1,28 @@
+{
+  "configuration": {
+    "region": {
+      "name": "Region",
+      "description": "Your electricity region in Denmark"
+    },
+    "vat_percent": {
+      "name": "VAT percentage",
+      "description": "VAT percentage to add to the price"
+    },
+    "fixed_cost_kwh": {
+      "name": "Fixed cost per kWh",
+      "description": "Fixed cost in kr/kWh (grid tariff, etc.)"
+    },
+    "update_interval_minutes": {
+      "name": "Update interval",
+      "description": "How often data should be updated (minutes)"
+    },
+    "forecast_days": {
+      "name": "Forecast days",
+      "description": "How many days to forecast ahead"
+    },
+    "model_retrain_days": {
+      "name": "Model retrain interval",
+      "description": "How often the ML model should be retrained (days)"
+    }
+  }
+}

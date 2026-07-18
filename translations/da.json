@@ -1,0 +1,28 @@
+{
+  "configuration": {
+    "region": {
+      "name": "Område",
+      "description": "Vælg dit elområde i Danmark"
+    },
+    "vat_percent": {
+      "name": "Momsprocent",
+      "description": "Momsprocent der skal lægges til prisen"
+    },
+    "fixed_cost_kwh": {
+      "name": "Fast tillæg per kWh",
+      "description": "Fast tillæg i kr/kWh (nettarif, etc.)"
+    },
+    "update_interval_minutes": {
+      "name": "Opdateringsinterval",
+      "description": "Hvor ofte data skal opdateres (minutter)"
+    },
+    "forecast_days": {
+      "name": "Antal dage frem",
+      "description": "Hvor mange dage der skal forudsiges"
+    },
+    "model_retrain_days": {
+      "name": "Genoptræningsinterval",
+      "description": "Hvor ofte ML-modellen skal genoptrænes (dage)"
+    }
+  }
+}
