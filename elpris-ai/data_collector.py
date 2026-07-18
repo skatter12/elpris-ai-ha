@@ -52,6 +52,58 @@ class DataCollector:
             "commodity_prices": commodity,
         }
 
+    async def refresh_prices(self, region: str, forecast_days: int) -> Dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        all_prices = []
+
+        for day_offset in range(0, 3):
+            dt = now - timedelta(days=day_offset)
+            url = f"{self.elprisenligenu_url}/{dt.year}/{dt.month:02d}-{dt.day:02d}_{region}.json"
+            async with httpx.AsyncClient() as client:
+                try:
+                    response = await client.get(url, timeout=15.0)
+                    if response.status_code == 404:
+                        continue
+                    response.raise_for_status()
+                    data = response.json()
+                    for entry in data:
+                        all_prices.append({
+                            "timestamp": entry.get("time_start"),
+                            "price": entry.get("DKK_per_kWh", 0),
+                            "area": region,
+                        })
+                except Exception as e:
+                    logger.warning(f"Error refreshing prices for {dt.date()}: {e}")
+            await asyncio.sleep(0.3)
+
+        for future_offset in [0, -1]:
+            dt = now + timedelta(days=future_offset)
+            url = f"{self.elprisenligenu_url}/{dt.year}/{dt.month:02d}-{dt.day:02d}_{region}.json"
+            async with httpx.AsyncClient() as client:
+                try:
+                    response = await client.get(url, timeout=15.0)
+                    if response.status_code == 404:
+                        continue
+                    response.raise_for_status()
+                    data = response.json()
+                    for entry in data:
+                        all_prices.append({
+                            "timestamp": entry.get("time_start"),
+                            "price": entry.get("DKK_per_kWh", 0),
+                            "area": region,
+                        })
+                except Exception as e:
+                    logger.warning(f"Error refreshing prices for {dt.date()}: {e}")
+            await asyncio.sleep(0.3)
+
+        weather_forecast = await self._fetch_weather_forecast(forecast_days)
+
+        logger.info(f"Refreshed: {len(all_prices)} prices, {len(weather_forecast)} weather forecast")
+        return {
+            "prices": all_prices,
+            "weather_forecast": weather_forecast,
+        }
+
     async def _fetch_prices_historical(self, region: str, days: int) -> List[Dict]:
         all_prices = []
         now = datetime.now(timezone.utc)

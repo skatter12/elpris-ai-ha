@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -27,6 +28,7 @@ class AppState:
         self.last_train = None
         self.forecast_data = None
         self.settings = self._load_settings()
+        self.full_data = None
 
     def _load_settings(self) -> dict:
         if ADDON_CONFIG.exists():
@@ -43,27 +45,31 @@ class AppState:
 
 app_state = AppState()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("Starting Elpris AI service")
-    await update_data()
-    yield
-    logger.info("Shutting down Elpris AI service")
-
-app = FastAPI(
-    title="Elpris AI",
-    description="AI-powered electricity price calculator for Denmark",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-async def update_data():
+async def update_data(full: bool = True):
     try:
-        logger.info("Fetching data from all sources...")
-        data = await app_state.collector.collect_all(
-            region=app_state.settings["region"],
-            forecast_days=app_state.settings["forecast_days"]
-        )
+        if full:
+            logger.info("Fetching all data (first startup)...")
+            data = await app_state.collector.collect_all(
+                region=app_state.settings["region"],
+                forecast_days=app_state.settings["forecast_days"]
+            )
+            app_state.full_data = data
+        else:
+            logger.info("Refreshing prices and weather forecast...")
+            refresh = await app_state.collector.refresh_prices(
+                region=app_state.settings["region"],
+                forecast_days=app_state.settings["forecast_days"]
+            )
+            if app_state.full_data:
+                existing = {p["timestamp"]: p for p in app_state.full_data.get("historical_prices", [])}
+                for p in refresh["prices"]:
+                    existing[p["timestamp"]] = p
+                app_state.full_data["historical_prices"] = list(existing.values())
+                app_state.full_data["weather_forecast"] = refresh["weather_forecast"]
+            data = app_state.full_data
+
+        if data is None:
+            return
 
         should_retrain = (
             app_state.last_train is None or
@@ -87,7 +93,33 @@ async def update_data():
 
     except Exception as e:
         logger.error(f"Error updating data: {e}")
-        raise
+        if full:
+            raise
+
+async def periodic_refresh():
+    while True:
+        await asyncio.sleep(app_state.settings["update_interval_minutes"] * 60)
+        try:
+            logger.info("Periodic refresh starting...")
+            await update_data(full=False)
+        except Exception as e:
+            logger.error(f"Periodic refresh failed: {e}")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Starting Elpris AI service")
+    await update_data(full=True)
+    task = asyncio.create_task(periodic_refresh())
+    yield
+    task.cancel()
+    logger.info("Shutting down Elpris AI service")
+
+app = FastAPI(
+    title="Elpris AI",
+    description="AI-powered electricity price calculator for Denmark",
+    version="1.0.1",
+    lifespan=lifespan
+)
 
 @app.get("/")
 async def root():
@@ -177,7 +209,7 @@ async def get_week_forecast():
 
 @app.post("/update")
 async def trigger_update():
-    await update_data()
+    await update_data(full=True)
     return {"message": "Update triggered", "timestamp": datetime.now().isoformat()}
 
 @app.get("/settings")
@@ -190,7 +222,7 @@ async def update_settings(settings: dict):
     ADDON_CONFIG.parent.mkdir(parents=True, exist_ok=True)
     with open(ADDON_CONFIG, "w") as f:
         json.dump(app_state.settings, f, indent=2)
-    await update_data()
+    await update_data(full=True)
     return {"message": "Settings updated", "settings": app_state.settings}
 
 if __name__ == "__main__":
