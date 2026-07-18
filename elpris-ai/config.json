@@ -29,7 +29,4 @@
     "forecast_days": "int(1,14)",
     "model_retrain_days": "int(1,30)"
   },
-  "ports": {
-    "8001/tcp": 8001
-  }
 }
