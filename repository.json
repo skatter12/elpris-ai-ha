@@ -1,7 +1,0 @@
-{
-  "name": "Elpris AI",
-  "description": "AI-powered electricity price calculator for Denmark - predicts prices 7 days ahead using ML",
-  "url": "https://github.com/skatter12/elpris-ai-ha",
-  "maintainer": "skatter12",
-  "channel": "stable"
-}
