@@ -56,6 +56,8 @@ class DataCollector:
                 "weather_history": data.get("weather_history", []),
                 "weather_forecast": data.get("weather_forecast", []),
                 "commodity_prices": data.get("commodity_prices", []),
+                "ttf_gas_prices": data.get("ttf_gas_prices", []),
+                "eua_prices": data.get("eua_prices", []),
                 "last_updated": datetime.now(timezone.utc).isoformat(),
             }
             with open(CACHE_FILE, "w") as f:
@@ -63,7 +65,9 @@ class DataCollector:
             logger.info(
                 f"Saved cache: {len(cache_data['historical_prices'])} prices, "
                 f"{len(cache_data['weather_history'])} weather history, "
-                f"{len(cache_data['commodity_prices'])} CO2 records"
+                f"{len(cache_data['commodity_prices'])} CO2 records, "
+                f"{len(cache_data['ttf_gas_prices'])} TTF gas, "
+                f"{len(cache_data['eua_prices'])} EUA CO2"
             )
         except Exception as e:
             logger.error(f"Error saving cache: {e}")
@@ -137,12 +141,22 @@ class DataCollector:
 
             logger.info(f"Fetching {historical_days} days of CO2 emissions...")
             co2 = await self._fetch_co2_emissions(region, historical_days)
+            await asyncio.sleep(1)
+
+            logger.info("Fetching TTF gas prices...")
+            ttf_gas = await self._fetch_ttf_gas(historical_days)
+            await asyncio.sleep(1)
+
+            logger.info("Fetching EUA CO2 prices...")
+            eua_co2 = await self._fetch_eua_co2(historical_days)
 
             data = {
                 "historical_prices": prices,
                 "weather_forecast": weather_forecast,
                 "weather_history": weather_history,
                 "commodity_prices": co2,
+                "ttf_gas_prices": ttf_gas,
+                "eua_prices": eua_co2,
             }
 
         self._save_cache(data)
@@ -151,7 +165,9 @@ class DataCollector:
             f"Data collected: {len(data['historical_prices'])} prices, "
             f"{len(data['weather_history'])} weather history, "
             f"{len(data['weather_forecast'])} weather forecast, "
-            f"{len(data['commodity_prices'])} CO2 records"
+            f"{len(data['commodity_prices'])} CO2 records, "
+            f"{len(data.get('ttf_gas_prices', []))} TTF gas, "
+            f"{len(data.get('eua_prices', []))} EUA CO2"
         )
 
         return data
@@ -168,16 +184,22 @@ class DataCollector:
         existing_prices = cache.get("historical_prices", [])
         existing_weather = cache.get("weather_history", [])
         existing_co2 = cache.get("commodity_prices", [])
+        existing_ttf = cache.get("ttf_gas_prices", [])
+        existing_eua = cache.get("eua_prices", [])
 
         price_timestamps = [p.get("timestamp", "") for p in existing_prices]
         weather_timestamps = [w.get("timestamp", "") for w in existing_weather]
         co2_timestamps = [c.get("timestamp", "") for c in existing_co2]
+        ttf_timestamps = [t.get("timestamp", "") for t in existing_ttf]
+        eua_timestamps = [e.get("timestamp", "") for e in existing_eua]
 
         missing_price_dates = self._find_missing_dates(price_timestamps, historical_days)
         missing_weather_dates = self._find_missing_weather_dates(
             weather_timestamps, historical_days
         )
         missing_co2_dates = self._find_missing_dates(co2_timestamps, historical_days)
+        missing_ttf_dates = self._find_missing_dates(ttf_timestamps, historical_days)
+        missing_eua_dates = self._find_missing_dates(eua_timestamps, historical_days)
 
         new_prices = []
         if missing_price_dates:
@@ -357,10 +379,36 @@ class DataCollector:
             existing_co2_map[c["timestamp"]] = c
         merged_co2 = list(existing_co2_map.values())
 
+        new_ttf = []
+        if missing_ttf_dates:
+            logger.info("Fetching TTF gas prices...")
+            ttf_data = await self._fetch_ttf_gas(historical_days)
+            ttf_map = {t["timestamp"]: t for t in ttf_data}
+            new_ttf = [v for k, v in ttf_map.items() if k not in {t["timestamp"] for t in existing_ttf}]
+
+        existing_ttf_map = {t["timestamp"]: t for t in existing_ttf}
+        for t in new_ttf:
+            existing_ttf_map[t["timestamp"]] = t
+        merged_ttf = list(existing_ttf_map.values())
+
+        new_eua = []
+        if missing_eua_dates:
+            logger.info("Fetching EUA CO2 prices...")
+            eua_data = await self._fetch_eua_co2(historical_days)
+            eua_map = {e["timestamp"]: e for e in eua_data}
+            new_eua = [v for k, v in eua_map.items() if k not in {e["timestamp"] for e in existing_eua}]
+
+        existing_eua_map = {e["timestamp"]: e for e in existing_eua}
+        for e in new_eua:
+            existing_eua_map[e["timestamp"]] = e
+        merged_eua = list(existing_eua_map.values())
+
         logger.info(
             f"Gap fill complete: {len(new_prices)} new prices, "
             f"{len(new_weather)} new weather, "
-            f"{len(new_co2)} new CO2 records"
+            f"{len(new_co2)} new CO2 records, "
+            f"{len(new_ttf)} new TTF gas, "
+            f"{len(new_eua)} new EUA CO2"
         )
 
         return {
@@ -368,6 +416,8 @@ class DataCollector:
             "weather_forecast": weather_forecast,
             "weather_history": merged_weather,
             "commodity_prices": merged_co2,
+            "ttf_gas_prices": merged_ttf,
+            "eua_prices": merged_eua,
         }
 
     async def refresh_prices(self, region: str, forecast_days: int) -> Dict[str, Any]:
@@ -637,4 +687,121 @@ class DataCollector:
             await asyncio.sleep(3)
 
         logger.info(f"Fetched {len(all_records)} CO2 emission records")
+        return all_records
+
+    async def _fetch_ttf_gas(self, days: int) -> List[Dict]:
+        all_records = []
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    "https://gasandregistry.eex.com/Gas/NGP/TTF_NGP_60_Days.csv",
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+
+                lines = response.text.strip().split("\n")
+                if len(lines) < 2:
+                    logger.warning("TTF NGP CSV has no data rows")
+                    return all_records
+
+                header = lines[0].split(";")
+                logger.info(f"TTF NGP CSV header: {header}")
+
+                for line in lines[1:]:
+                    parts = line.split(";")
+                    if len(parts) >= 3:
+                        try:
+                            date_str = parts[0].strip().strip('"')
+                            price_str = parts[1].strip().strip('"')
+
+                            if price_str and price_str != "" and price_str != "-":
+                                price = float(price_str.replace(",", "."))
+
+                                dt = datetime.strptime(date_str, "%d.%m.%Y")
+                                all_records.append({
+                                    "timestamp": dt.strftime("%Y-%m-%dT00:00:00"),
+                                    "ttf_gas_price": price,
+                                })
+                        except (ValueError, IndexError) as e:
+                            continue
+
+                logger.info(f"Fetched {len(all_records)} TTF gas price records")
+
+        except Exception as e:
+            logger.error(f"Error fetching TTF gas prices: {e}")
+
+        return all_records
+
+    async def _fetch_eua_co2(self, days: int) -> List[Dict]:
+        all_records = []
+        try:
+            current_year = datetime.utcnow().year
+            url = f"https://public.eex-group.com/eex/eua-auction-report/emission-spot-primary-market-auction-report-{current_year}-data.xlsx"
+
+            async with httpx.AsyncClient() as client:
+                response = await client.get(url, timeout=60.0)
+                response.raise_for_status()
+
+                import tempfile
+                import os
+
+                with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+                    tmp.write(response.content)
+                    tmp_path = tmp.name
+
+                try:
+                    import openpyxl
+                    wb = openpyxl.load_workbook(tmp_path, read_only=True)
+                    ws = wb.active
+
+                    rows = list(ws.iter_rows(values_only=True))
+                    if len(rows) < 2:
+                        logger.warning("EUA Excel has no data rows")
+                        return all_records
+
+                    header = [str(c).strip() if c else "" for c in rows[0]]
+                    logger.info(f"EUA Excel header: {header}")
+
+                    date_col = None
+                    price_col = None
+                    for i, h in enumerate(header):
+                        h_lower = h.lower()
+                        if "date" in h_lower or "auction" in h_lower:
+                            date_col = i
+                        if "clearing" in h_lower or "settlement" in h_lower or "price" in h_lower:
+                            price_col = i
+
+                    if date_col is None:
+                        date_col = 0
+                    if price_col is None:
+                        price_col = len(header) - 1
+
+                    for row in rows[1:]:
+                        try:
+                            date_val = row[date_col]
+                            price_val = row[price_col]
+
+                            if date_val and price_val:
+                                if hasattr(date_val, "strftime"):
+                                    dt = date_val
+                                else:
+                                    dt = datetime.strptime(str(date_val), "%Y-%m-%d")
+
+                                price = float(price_val)
+                                all_records.append({
+                                    "timestamp": dt.strftime("%Y-%m-%dT00:00:00"),
+                                    "eua_price": price,
+                                })
+                        except (ValueError, IndexError, TypeError):
+                            continue
+
+                    wb.close()
+                    logger.info(f"Fetched {len(all_records)} EUA CO2 price records from {current_year}")
+
+                finally:
+                    os.unlink(tmp_path)
+
+        except Exception as e:
+            logger.error(f"Error fetching EUA CO2 prices: {e}")
+
         return all_records

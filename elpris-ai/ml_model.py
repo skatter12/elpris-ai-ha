@@ -50,14 +50,20 @@ class PricePredictor:
         historical_prices = data.get("historical_prices", [])
         weather_history = data.get("weather_history", [])
         commodity_prices = data.get("commodity_prices", [])
+        ttf_gas_prices = data.get("ttf_gas_prices", [])
+        eua_prices = data.get("eua_prices", [])
 
         price_df = pd.DataFrame(historical_prices) if historical_prices else pd.DataFrame()
         weather_df = pd.DataFrame(weather_history) if weather_history else pd.DataFrame()
         commodity_df = pd.DataFrame(commodity_prices) if commodity_prices else pd.DataFrame()
+        ttf_df = pd.DataFrame(ttf_gas_prices) if ttf_gas_prices else pd.DataFrame()
+        eua_df = pd.DataFrame(eua_prices) if eua_prices else pd.DataFrame()
 
         price_df = self._normalize_df(price_df)
         weather_df = self._normalize_df(weather_df)
         commodity_df = self._normalize_df(commodity_df)
+        ttf_df = self._normalize_df(ttf_df)
+        eua_df = self._normalize_df(eua_df)
 
         if not price_df.empty:
             for ts, row in price_df.iterrows():
@@ -74,6 +80,8 @@ class PricePredictor:
                     "co2_emission": 0,
                     "consumption": 0,
                     "production": 0,
+                    "ttf_gas": 0,
+                    "eua_price": 0,
                 }
 
                 if not weather_df.empty:
@@ -95,6 +103,24 @@ class PricePredictor:
                             record["co2_emission"] = commodity_row.get("co2_price", 0) or 0
                             record["consumption"] = commodity_row.get("consumption", 0) or 0
                             record["production"] = commodity_row.get("production", 0) or 0
+                    except Exception:
+                        pass
+
+                if not ttf_df.empty:
+                    try:
+                        closest_ttf = ttf_df.index[ttf_df.index.get_indexer([ts], method="nearest")]
+                        if len(closest_ttf) > 0:
+                            ttf_row = ttf_df.loc[closest_ttf[0]]
+                            record["ttf_gas"] = ttf_row.get("ttf_gas_price", 0) or 0
+                    except Exception:
+                        pass
+
+                if not eua_df.empty:
+                    try:
+                        closest_eua = eua_df.index[eua_df.index.get_indexer([ts], method="nearest")]
+                        if len(closest_eua) > 0:
+                            eua_row = eua_df.loc[closest_eua[0]]
+                            record["eua_price"] = eua_row.get("eua_price", 0) or 0
                     except Exception:
                         pass
 
@@ -124,6 +150,7 @@ class PricePredictor:
         "hour", "dayofweek", "month", "is_weekend",
         "temperature", "wind_speed", "cloud_cover",
         "co2_emission", "consumption", "production",
+        "ttf_gas", "eua_price",
         "y_lag_1", "y_lag_24", "y_lag_168",
         "y_rolling_24", "y_rolling_168",
     ]
@@ -194,6 +221,12 @@ class PricePredictor:
             commodity_prices = data.get("commodity_prices", [])
             commodity_df = self._normalize_df(pd.DataFrame(commodity_prices) if commodity_prices else pd.DataFrame())
 
+            ttf_gas_prices = data.get("ttf_gas_prices", [])
+            ttf_df = self._normalize_df(pd.DataFrame(ttf_gas_prices) if ttf_gas_prices else pd.DataFrame())
+
+            eua_prices = data.get("eua_prices", [])
+            eua_df = self._normalize_df(pd.DataFrame(eua_prices) if eua_prices else pd.DataFrame())
+
             for col in ["temperature", "wind_speed", "cloud_cover"]:
                 future[col] = 0.0
                 if not weather_df.empty:
@@ -218,6 +251,31 @@ class PricePredictor:
                             future.at[i, "co2_emission"] = c_row.get("co2_price", 0) or 0
                             future.at[i, "consumption"] = c_row.get("consumption", 0) or 0
                             future.at[i, "production"] = c_row.get("production", 0) or 0
+                    except Exception:
+                        pass
+
+            for col in ["ttf_gas", "eua_price"]:
+                future[col] = 0.0
+
+            if not ttf_df.empty:
+                for i, row in future.iterrows():
+                    ts = row["ds"]
+                    try:
+                        closest = ttf_df.index[ttf_df.index.get_indexer([ts], method="nearest")]
+                        if len(closest) > 0:
+                            ttf_row = ttf_df.loc[closest[0]]
+                            future.at[i, "ttf_gas"] = ttf_row.get("ttf_gas_price", 0) or 0
+                    except Exception:
+                        pass
+
+            if not eua_df.empty:
+                for i, row in future.iterrows():
+                    ts = row["ds"]
+                    try:
+                        closest = eua_df.index[eua_df.index.get_indexer([ts], method="nearest")]
+                        if len(closest) > 0:
+                            eua_row = eua_df.loc[closest[0]]
+                            future.at[i, "eua_price"] = eua_row.get("eua_price", 0) or 0
                     except Exception:
                         pass
 
@@ -259,6 +317,13 @@ class PricePredictor:
                 except Exception:
                     pass
 
+            latest_ttf = 0.0
+            if not ttf_df.empty:
+                latest_ttf = float(ttf_df.iloc[-1].get("ttf_gas_price", 0) or 0)
+            latest_eua = 0.0
+            if not eua_df.empty:
+                latest_eua = float(eua_df.iloc[-1].get("eua_price", 0) or 0)
+
             results = []
             for i, (ts, price_raw) in enumerate(zip(future_times, predictions)):
                 ts_normalized = pd.Timestamp(ts).tz_localize(None)
@@ -285,6 +350,8 @@ class PricePredictor:
                         "method": method,
                         "hour": ts.hour,
                         "dayofweek": ts.weekday(),
+                        "ttf_gas": round(latest_ttf, 2),
+                        "eua_price": round(latest_eua, 2),
                     },
                 })
 
@@ -313,6 +380,15 @@ class PricePredictor:
 
         hourly_avg = df.groupby(["hour", "dayofweek"])["price"].mean().to_dict()
 
+        latest_ttf = 0.0
+        ttf_gas_prices = data.get("ttf_gas_prices", [])
+        if ttf_gas_prices:
+            latest_ttf = ttf_gas_prices[-1].get("ttf_gas_price", 0) or 0
+        latest_eua = 0.0
+        eua_prices = data.get("eua_prices", [])
+        if eua_prices:
+            latest_eua = eua_prices[-1].get("eua_price", 0) or 0
+
         results = []
         now = datetime.utcnow()
 
@@ -338,6 +414,8 @@ class PricePredictor:
                     "method": "simple_average",
                     "hour": hour,
                     "dayofweek": dayofweek,
+                    "ttf_gas": round(latest_ttf, 2),
+                    "eua_price": round(latest_eua, 2),
                 },
             })
 

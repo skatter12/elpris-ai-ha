@@ -1,9 +1,9 @@
 {
   "slug": "elpris_ai",
   "name": "Elpris AI",
-  "description": "AI-powered electricity price calculator for Denmark - predicts prices 7 days ahead with netselskab/elselskab pricing",
+  "description": "AI-powered electricity price calculator for Denmark - predicts prices 7 days ahead with netselskab/elselskab pricing and commodity price features (TTF gas, EUA CO2)",
   "url": "https://github.com/skatter12/elpris-ai-ha",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "homeassistant": "2024.1.0",
   "arch": ["aarch64", "amd64", "armhf", "armv7"],
   "init": false,

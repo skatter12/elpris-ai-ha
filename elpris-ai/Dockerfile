@@ -10,7 +10,8 @@ RUN pip install --no-cache-dir \
     pydantic==2.6.0 \
     pydantic-settings==2.1.0 \
     aiohttp==3.9.3 \
-    python-dateutil==2.8.2
+    python-dateutil==2.8.2 \
+    openpyxl==3.1.2
 
 WORKDIR /app
 COPY . .
