@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 CONFIG_DIR = Path(os.environ.get("CONFIG_DIR", "/config"))
 ADDON_CONFIG = CONFIG_DIR / "elpris_ai" / "settings.json"
+PROVIDER_DB = Path(__file__).parent / "provider_database.json"
 
 
 class AppState:
@@ -30,6 +31,7 @@ class AppState:
         self.forecast_data = None
         self.settings = self._load_settings()
         self.full_data = None
+        self.provider_db = self._load_provider_db()
 
     def _load_settings(self) -> dict:
         if ADDON_CONFIG.exists():
@@ -43,6 +45,15 @@ class AppState:
             "forecast_days": 7,
             "model_retrain_days": 7,
         }
+
+    def _load_provider_db(self) -> dict:
+        try:
+            if PROVIDER_DB.exists():
+                with open(PROVIDER_DB, "r") as f:
+                    return json.load(f)
+        except Exception as e:
+            logger.warning(f"Could not load provider database: {e}")
+        return {"netselskaber": {}, "elselskaber": {}, "fixed_costs": {}}
 
 
 app_state = AppState()
@@ -273,6 +284,112 @@ async def get_cache_info():
             "last_modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
         }
     return {"exists": False}
+
+
+@app.get("/providers")
+async def get_providers():
+    return app_state.provider_db
+
+
+@app.get("/providers/netselskaber")
+async def get_netselskaber():
+    return app_state.provider_db.get("netselskaber", {})
+
+
+@app.get("/providers/elselskaber")
+async def get_elselskaber():
+    return app_state.provider_db.get("elselskaber", {})
+
+
+@app.get("/providers/fixed_costs")
+async def get_fixed_costs():
+    return app_state.provider_db.get("fixed_costs", {})
+
+
+@app.get("/providers/netselskaber/{netselskab_key}")
+async def get_netselskab(netselskab_key: str):
+    ns = app_state.provider_db.get("netselskaber", {}).get(netselskab_key)
+    if not ns:
+        raise HTTPException(status_code=404, detail=f"Netelskab '{netselskab_key}' not found")
+    return ns
+
+
+@app.get("/providers/elselskaber/{elselskab_key}")
+async def get_elselskab(elselskab_key: str):
+    es = app_state.provider_db.get("elselskaber", {}).get(elselskab_key)
+    if not es:
+        raise HTTPException(status_code=404, detail=f"Elselskab '{elselskab_key}' not found")
+    return es
+
+
+@app.get("/providers/calculate")
+async def calculate_price(
+    netselskab: str = "N1",
+    elselskab: str = "Vindstød",
+    spot_price_kwh: float = 0.5,
+    hour: int = None,
+):
+    if hour is None:
+        hour = datetime.now().hour
+
+    fixed = app_state.provider_db.get("fixed_costs", {})
+    ns_data = app_state.provider_db.get("netselskaber", {}).get(netselskab, {})
+    es_data = app_state.provider_db.get("elselskaber", {}).get(elselskab, {})
+
+    if not ns_data:
+        raise HTTPException(status_code=404, detail=f"Netelskab '{netselskab}' not found")
+    if not es_data:
+        raise HTTPException(status_code=404, detail=f"Elselskab '{elselskab}' not found")
+
+    tariffs = ns_data.get("tariffs", {})
+    if 0 <= hour < 6:
+        net_tariff = tariffs.get("lavlast", {}).get("kr_kwh", 0)
+        period = "lavlast"
+    elif 17 <= hour < 21:
+        net_tariff = tariffs.get("spidslast", {}).get("kr_kwh", 0)
+        period = "spidslast"
+    else:
+        net_tariff = tariffs.get("hojlast", {}).get("kr_kwh", 0)
+        period = "hojlast"
+
+    elafgift = fixed.get("elafgift_kwh", 0.0954)
+    systemtarif = fixed.get("systemtarif_kwh", 0.012)
+    transmissionstarif = fixed.get("transmissionstarif_kwh", 0.008)
+
+    supply_margin = es_data.get("kr_tillaeg_kwh", 0)
+    subscription_monthly = es_data.get("monthly_abonnement_kr", 0)
+    subscription_per_kwh = subscription_monthly / 4000 * 12 if subscription_monthly > 0 else 0
+
+    base = spot_price_kwh
+    total_kwh = (
+        base
+        + supply_margin
+        + net_tariff
+        + systemtarif
+        + transmissionstarif
+        + elafgift
+        + subscription_per_kwh
+    )
+    total_with_vat = total_kwh * 1.25
+
+    return {
+        "netselskab": ns_data.get("name", netselskab),
+        "elselskab": es_data.get("name", elselskab),
+        "period": period,
+        "hour": hour,
+        "breakdown": {
+            "spotpris_kwh": round(base, 4),
+            "leverandoer_tillaeg_kwh": round(supply_margin, 4),
+            "nettarif_kwh": round(net_tariff, 4),
+            "systemtarif_kwh": round(systemtarif, 4),
+            "transmissionstarif_kwh": round(transmissionstarif, 4),
+            "elafgift_kwh": round(elafgift, 4),
+            "abonnement_kwh": round(subscription_per_kwh, 4),
+        },
+        "total_ekskl_moms": round(total_kwh, 4),
+        "total_inkl_moms": round(total_with_vat, 4),
+        "subscription_monthly_kr": subscription_monthly,
+    }
 
 
 @app.post("/update")

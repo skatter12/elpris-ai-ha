@@ -1,0 +1,401 @@
+{
+  "version": "2026-01",
+  "last_updated": "2026-07-18",
+  "fixed_costs": {
+    "elafgift_kwh": 0.0954,
+    "systemtarif_kwh": 0.012,
+    "transmissionstarif_kwh": 0.008,
+    "description": "Elafgift, systemtarif og transmissionstarif (gældende 2026)"
+  },
+  "netselskaber": {
+    "N1": {
+      "name": "N1 A/S",
+      "region": "Jylland/Fyn",
+      "customer_category": "C",
+      "tariff_model": 3,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 10.98,
+          "kr_kwh": 0.1098
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 16.47,
+          "kr_kwh": 0.1647
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 42.83,
+          "kr_kwh": 0.4283
+        }
+      },
+      "subscription": {
+        "annual_kr": 421.84,
+        "monthly_kr": 35.15
+      }
+    },
+    "Radius": {
+      "name": "Radius Elnet A/S",
+      "region": "Sjælland/København",
+      "customer_category": "C",
+      "tariff_model": 3,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 13.27,
+          "kr_kwh": 0.1327
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 19.91,
+          "kr_kwh": 0.1991
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 51.76,
+          "kr_kwh": 0.5176
+        }
+      },
+      "subscription": {
+        "annual_kr": 449.31,
+        "monthly_kr": 37.44
+      }
+    },
+    "Cerius": {
+      "name": "Cerius A/S",
+      "region": "Sjælland/Lolland/Falster",
+      "customer_category": "C",
+      "tariff_model": 3,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 14.42,
+          "kr_kwh": 0.1442
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 21.63,
+          "kr_kwh": 0.2163
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 56.23,
+          "kr_kwh": 0.5623
+        }
+      },
+      "subscription": {
+        "annual_kr": 449.31,
+        "monthly_kr": 37.44
+      }
+    },
+    "EWII": {
+      "name": "EWII Elnet A/S",
+      "region": "Sydjylland",
+      "customer_category": "C",
+      "tariff_model": 3,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 10.56,
+          "kr_kwh": 0.1056
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 15.84,
+          "kr_kwh": 0.1584
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 41.19,
+          "kr_kwh": 0.4119
+        }
+      },
+      "subscription": {
+        "annual_kr": 421.84,
+        "monthly_kr": 35.15
+      }
+    },
+    "TREFOR": {
+      "name": "TREFOR El-net A/S",
+      "region": "Sydjylland",
+      "customer_category": "C",
+      "tariff_model": 3,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 9.65,
+          "kr_kwh": 0.0965
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 14.48,
+          "kr_kwh": 0.1448
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 37.63,
+          "kr_kwh": 0.3763
+        }
+      },
+      "subscription": {
+        "annual_kr": 421.84,
+        "monthly_kr": 35.15
+      }
+    },
+    "Cebi": {
+      "name": "Cebi El-net A/S",
+      "region": "Bornholm",
+      "customer_category": "C",
+      "tariff_model": 1,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 8.84,
+          "kr_kwh": 0.0884
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 8.84,
+          "kr_kwh": 0.0884
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 8.84,
+          "kr_kwh": 0.0884
+        }
+      },
+      "subscription": {
+        "annual_kr": 380.00,
+        "monthly_kr": 31.67
+      }
+    },
+    "Dinel": {
+      "name": "Dinel A/S",
+      "region": "Østjylland",
+      "customer_category": "C",
+      "tariff_model": 3,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 7.69,
+          "kr_kwh": 0.0769
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 11.54,
+          "kr_kwh": 0.1154
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 30.00,
+          "kr_kwh": 0.3000
+        }
+      },
+      "subscription": {
+        "annual_kr": 421.84,
+        "monthly_kr": 35.15
+      }
+    },
+    "Elinord": {
+      "name": "Elinord A/S",
+      "region": "Nordjylland",
+      "customer_category": "C",
+      "tariff_model": 1,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 3.88,
+          "kr_kwh": 0.0388
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 3.88,
+          "kr_kwh": 0.0388
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 3.88,
+          "kr_kwh": 0.0388
+        }
+      },
+      "subscription": {
+        "annual_kr": 421.84,
+        "monthly_kr": 35.15
+      }
+    },
+    "NOE_Net": {
+      "name": "NOE Net A/S",
+      "region": "Sydjylland",
+      "customer_category": "C",
+      "tariff_model": 3,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 7.04,
+          "kr_kwh": 0.0704
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 10.56,
+          "kr_kwh": 0.1056
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 27.36,
+          "kr_kwh": 0.2736
+        }
+      },
+      "subscription": {
+        "annual_kr": 421.84,
+        "monthly_kr": 35.15
+      }
+    },
+    "RAH": {
+      "name": "RAH Net A/S",
+      "region": "Sydjylland",
+      "customer_category": "C",
+      "tariff_model": 3,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 8.13,
+          "kr_kwh": 0.0813
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 12.19,
+          "kr_kwh": 0.1219
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 31.69,
+          "kr_kwh": 0.3169
+        }
+      },
+      "subscription": {
+        "annual_kr": 421.84,
+        "monthly_kr": 35.15
+      }
+    },
+    "Elnet_Midt": {
+      "name": "Elnet Midt A/S",
+      "region": "Midtjylland",
+      "customer_category": "C",
+      "tariff_model": 3,
+      "tariffs": {
+        "lavlast": {
+          "hours": "00-06",
+          "ore_kwh": 10.56,
+          "kr_kwh": 0.1056
+        },
+        "hojlast": {
+          "hours": "06-17 & 21-24",
+          "ore_kwh": 15.84,
+          "kr_kwh": 0.1584
+        },
+        "spidslast": {
+          "hours": "17-21",
+          "ore_kwh": 41.19,
+          "kr_kwh": 0.4119
+        }
+      },
+      "subscription": {
+        "annual_kr": 421.84,
+        "monthly_kr": 35.15
+      }
+    }
+  },
+  "elselskaber": {
+    "Vindstød": {
+      "name": "Vindstød",
+      "ore_tillaeg_kwh": 0.0,
+      "kr_tillaeg_kwh": 0.0000,
+      "monthly_abonnement_kr": 0,
+      "binding_months": 0,
+      "green_power": true,
+      "description": "100% dansk vindenergi, ingen tillæg"
+    },
+    "Andel_Energi": {
+      "name": "Andel Energi",
+      "ore_tillaeg_kwh": 0.0,
+      "kr_tillaeg_kwh": 0.0000,
+      "monthly_abonnement_kr": 0,
+      "binding_months": 0,
+      "green_power": true,
+      "description": "Grøn strøm-certifikater tilgængelige"
+    },
+    "Norlys": {
+      "name": "Norlys",
+      "ore_tillaeg_kwh": 7.8,
+      "kr_tillaeg_kwh": 0.078,
+      "monthly_abonnement_kr": 29,
+      "binding_months": 0,
+      "green_power": true,
+      "description": "Danmarks største, inkluderer grøn strøm"
+    },
+    "EWII": {
+      "name": "EWII",
+      "ore_tillaeg_kwh": 4.4,
+      "kr_tillaeg_kwh": 0.044,
+      "monthly_abonnement_kr": 23,
+      "binding_months": 0,
+      "green_power": true,
+      "description": "Fokus på vedvarende energi"
+    },
+    "OK": {
+      "name": "OK",
+      "ore_tillaeg_kwh": 0.0,
+      "kr_tillaeg_kwh": 0.0000,
+      "monthly_abonnement_kr": 39,
+      "binding_months": 0,
+      "green_power": true,
+      "description": "CO2-kompensation og grønne tilvalg"
+    },
+    "AURA": {
+      "name": "AURA Energi",
+      "ore_tillaeg_kwh": 0.0,
+      "kr_tillaeg_kwh": 0.0000,
+      "monthly_abonnement_kr": 39,
+      "binding_months": 0,
+      "green_power": true,
+      "description": "Lokalt andelsselskab"
+    },
+    "NRGi": {
+      "name": "NRGi",
+      "ore_tillaeg_kwh": 9.0,
+      "kr_tillaeg_kwh": 0.090,
+      "monthly_abonnement_kr": 0,
+      "binding_months": 0,
+      "green_power": false,
+      "description": "Variabel pris med tillæg"
+    },
+    "SEAS_NVE": {
+      "name": "SEAS-NVE (Andel)",
+      "ore_tillaeg_kwh": 2.5,
+      "kr_tillaeg_kwh": 0.025,
+      "monthly_abonnement_kr": 25,
+      "binding_months": 0,
+      "green_power": true,
+      "description": "Stort andelsselskab på Sjælland"
+    },
+    "Nettopower": {
+      "name": "Nettopower",
+      "ore_tillaeg_kwh": 0.5,
+      "kr_tillaeg_kwh": 0.005,
+      "monthly_abonnement_kr": 12,
+      "binding_months": 0,
+      "green_power": false,
+      "description": "Billigste online-udbyder"
+    },
+    "Anden": {
+      "name": "Anden udbyder",
+      "ore_tillaeg_kwh": 0.0,
+      "kr_tillaeg_kwh": 0.0000,
+      "monthly_abonnement_kr": 0,
+      "binding_months": 0,
+      "green_power": false,
+      "description": "Tilpasset manuelt"
+    }
+  }
+}
