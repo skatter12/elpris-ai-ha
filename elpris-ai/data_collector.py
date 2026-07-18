@@ -11,6 +11,13 @@ LATITUDE = "56.162"
 LONGITUDE = "10.203"
 
 
+def _should_fetch_tomorrow() -> bool:
+    now_cet = datetime.now(timezone(timedelta(hours=1)))
+    if now_cet.hour > 13 or (now_cet.hour == 13 and now_cet.minute >= 30):
+        return True
+    return False
+
+
 class DataCollector:
     def __init__(self):
         self.elprisenligenu_url = "https://www.elprisenligenu.dk/api/v1/prices"
@@ -76,7 +83,9 @@ class DataCollector:
                     logger.warning(f"Error refreshing prices for {dt.date()}: {e}")
             await asyncio.sleep(0.3)
 
-        for future_offset in [0, -1]:
+        fetch_tomorrow = _should_fetch_tomorrow()
+        future_offsets = [0, -1] if fetch_tomorrow else [0]
+        for future_offset in future_offsets:
             dt = now + timedelta(days=future_offset)
             url = f"{self.elprisenligenu_url}/{dt.year}/{dt.month:02d}-{dt.day:02d}_{region}.json"
             async with httpx.AsyncClient() as client:
@@ -143,7 +152,9 @@ class DataCollector:
             if batch_end < days:
                 await asyncio.sleep(1)
 
-        for future_offset in [0, -1]:
+        fetch_tomorrow = _should_fetch_tomorrow()
+        future_offsets = [0, -1] if fetch_tomorrow else [0]
+        for future_offset in future_offsets:
             dt = now + timedelta(days=future_offset)
             url = f"{self.elprisenligenu_url}/{dt.year}/{dt.month:02d}-{dt.day:02d}_{region}.json"
             async with httpx.AsyncClient() as client:
